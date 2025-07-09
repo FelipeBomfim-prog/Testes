@@ -1,0 +1,16 @@
+export const addressElements = {
+  mainDiv: '.main-div',
+  addressList: '.address-list',
+  title: '.address-list h3',
+  addressCard: '.address',
+  selectedAddressCard: '.address.selected',
+  rua: '.rua',
+  bairro: '.bairro',
+  numero: '.numero',
+  complemento: '.complemento',
+  deleteButton: '.button-address',
+  noAddressMessage: '.address-list h4',
+  confirmButton: '.buttons-container .button-address:contains("Confirmar")',
+  restaurantsButton: '.buttons-container .button-address:contains("Restaurantes")',
+  modalButton: '.buttons-container ModalAddress',
+};

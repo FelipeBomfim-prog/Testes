@@ -1,0 +1,74 @@
+stages:
+  - scan-code
+  - build
+  - deploy
+  - validate-deploy
+
+scan-code:
+  stage: scan-code
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  script:
+    - trivy fs --exit-code 0 --severity HIGH,CRITICAL --format table .
+
+build:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375/
+  script:
+    - docker build -t app-food-dev:staging .
+
+deploy:
+  stage: deploy
+  tags:
+    - aws
+  script:
+    - docker compose up -d --build
+    - sleep 100
+
+validate-deploy:
+  stage: validate-deploy
+  image: cypress/browsers:22.16.0
+  variables:
+    DOCKER_HOST: unix:///var/run/docker.sock
+  script:
+    - npm install
+    - npx cypress run --env allure=true || true
+    - npx mochawesome-merge cypress/reports/*.json > results.json
+    - apt-get update && apt-get install -y default-jre jq bc curl 
+    - npx allure generate allure-results
+    - export TOTAL_TESTS=$(jq '.stats.tests' results.json)
+    - export PASSED=$(jq '.stats.passes' results.json)
+    - export FAILED=$(jq '.stats.failures' results.json)
+    - export SKIPPED=$(jq '.stats.skipped' results.json)
+    - export PASS_PERCENT=$(jq '.stats.passPercent | floor' results.json)
+    - export DURATION_MINUTES=$(echo "scale=1; $(jq '.stats.duration' results.json) / 60000" | bc)
+    - |
+      jq -n \
+        --arg tp "$PASSED" \
+        --arg ft "$FAILED" \
+        --arg st "$SKIPPED" \
+        --arg dm "$DURATION_MINUTES" \
+        --arg tt "$TOTAL_TESTS" \
+        --arg pp "$PASS_PERCENT" \
+        '{
+          tests_passed: ($tp|tonumber),
+          failed_tests: ($ft|tonumber),
+          skipped_tests: ($st|tonumber),
+          duration_minutes: ($dm|tonumber),
+          total_tests: ($tt|tonumber),
+          pass_percent: ($pp|tonumber)
+        }' > payload.json
+
+    - |
+      curl -X POST https://reiel.app.n8n.cloud/webhook/4f05ccca-ecac-44c6-838e-fd3fa663c3ca \
+        -H "Content-Type: application/json" \
+        -d @payload.json
+  artifacts:
+    paths:
+      - allure-report
+  allow_failure: true
